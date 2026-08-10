@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Faydai — Pesquisa de Bem-Estar no Trabalho</title>
+<style>
+  :root{
+    --bg: #EEF2EF;
+    --card: #FFFFFF;
+    --ink: #24312B;
+    --ink-soft: #5B6B63;
+    --teal: #1F5C55;
+    --teal-deep: #163F3A;
+    --amber: #E3A23C;
+    --amber-soft: #F6E3C2;
+    --line: #DCE4DF;
+    --radius: 20px;
+    --shadow: 0 10px 30px -12px rgba(22,63,58,0.18);
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ height:100%; margin:0; }
+  body{
+    background:
+      radial-gradient(1200px 500px at 50% -10%, #E3EDE7 0%, var(--bg) 55%);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:100vh;
+    padding: 20px;
+  }
+  @font-face{
+    /* usa fontes do sistema por padrão; Poppins carregado via link abaixo para o título */
+  }
+  .app{
+    width:100%;
+    max-width: 460px;
+  }
+
+  /* ---------- Cabeçalho / progresso ---------- */
+  .top{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom: 18px;
+  }
+  .brand{
+    font-family:"Poppins", sans-serif;
+    font-weight:600;
+    font-size:15px;
+    color: var(--teal-deep);
+    letter-spacing:0.2px;
+  }
+  .brand small{
+    display:block;
+    font-family:"Inter", sans-serif;
+    font-weight:400;
+    font-size:11px;
+    color: var(--ink-soft);
+    margin-top:1px;
+  }
+  .steps{
+    display:flex;
+    gap:6px;
+  }
+  .step{
+    width:26px;
+    height:6px;
+    border-radius:4px;
+    background: var(--line);
+    transition: background .35s ease, transform .35s ease;
+  }
+  .step.done{ background: var(--teal); }
+  .step.current{ background: var(--amber); transform: scaleY(1.3); }
+
+  /* ---------- Cartão da pergunta ---------- */
+  .card{
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 30px 24px 26px;
+    position: relative;
+    overflow:hidden;
+  }
+  .card::before{
+    content:"";
+    position:absolute;
+    inset:0 0 auto 0;
+    height:5px;
+    background: linear-gradient(90deg, var(--teal), var(--amber));
+    opacity:.9;
+  }
+  .dim{
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color: var(--teal);
+    margin: 4px 0 10px;
+  }
+  h1{
+    font-family:"Poppins", sans-serif;
+    font-size: 21px;
+    line-height:1.35;
+    font-weight:600;
+    margin: 0 0 26px;
+    color: var(--ink);
+  }
+
+  /* ---------- Opções de resposta (só toque) ---------- */
+  .options{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .opt{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    width:100%;
+    padding: 15px 16px;
+    border-radius: 14px;
+    border: 1.5px solid var(--line);
+    background: #FAFBFA;
+    font-family:"Inter", sans-serif;
+    font-size:16px;
+    font-weight:500;
+    color: var(--ink);
+    text-align:left;
+    cursor:pointer;
+    transition: border-color .15s ease, background .15s ease, transform .08s ease;
+    min-height: 60px;
+  }
+  .opt:active{ transform: scale(0.98); }
+  .opt .emoji{
+    font-size:22px;
+    width:30px;
+    text-align:center;
+    flex-shrink:0;
+  }
+  .opt.selected{
+    border-color: var(--teal);
+    background: linear-gradient(0deg, var(--amber-soft), var(--amber-soft)), #FAFBFA;
+  }
+  .opt:focus-visible{
+    outline: 3px solid var(--teal);
+    outline-offset: 2px;
+  }
+
+  /* ---------- Rodapé de confiança (Decisão 6) ---------- */
+  .trust{
+    display:flex;
+    gap:10px;
+    align-items:flex-start;
+    margin-top: 22px;
+    padding: 13px 14px;
+    background: #F1F6F3;
+    border-radius: 12px;
+    font-size: 12.5px;
+    line-height:1.5;
+    color: var(--ink-soft);
+  }
+  .trust svg{ flex-shrink:0; margin-top:1px; }
+
+  /* ---------- Tela final ---------- */
+  .done-screen{
+    text-align:center;
+    padding: 46px 24px;
+  }
+  .done-screen .check{
+    width:64px; height:64px; border-radius:50%;
+    background: var(--teal);
+    display:flex; align-items:center; justify-content:center;
+    margin: 0 auto 18px;
+  }
+  .done-screen h2{
+    font-family:"Poppins", sans-serif;
+    font-size:20px;
+    margin: 0 0 8px;
+  }
+  .done-screen p{
+    color: var(--ink-soft);
+    font-size:14.5px;
+    line-height:1.6;
+    margin:0;
+  }
+
+  .hidden{ display:none; }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ transition:none !important; }
+  }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="app">
+  <div class="top">
+    <div class="brand">Faydai<small>Pesquisa anônima de bem-estar</small></div>
+    <div class="steps" id="steps"></div>
+  </div>
+
+  <div class="card" id="quizCard">
+    <div class="dim" id="dim"></div>
+    <h1 id="question"></h1>
+    <div class="options" id="options"></div>
+
+    <div class="trust">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F5C55" stroke-width="2">
+        <path d="M12 2 4 5v6c0 5 3.5 8.5 8 11 4.5-2.5 8-6 8-11V5l-8-3Z"/>
+      </svg>
+      <span>Sua resposta é anônima. O resultado só aparece agrupado por setor, e só quando um número mínimo de pessoas responder.</span>
+    </div>
+  </div>
+
+  <div class="card done-screen hidden" id="doneCard">
+    <div class="check">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+        <path d="M20 6 9 17l-5-5"/>
+      </svg>
+    </div>
+    <h2>Respostas enviadas</h2>
+    <p>Obrigado por participar. Ninguém, nem a empresa, consegue saber qual foi a sua resposta individual.</p>
+  </div>
+</div>
+
+<script>
+  // ---------- Perguntas (COPSOQ II-Br, versão curta — texto oficial preservado) ----------
+  const QUESTIONS = [
+    {
+      dim: "Carga de trabalho",
+      text: "Com que frequência você não consegue terminar suas tarefas no prazo?",
+    },
+    {
+      dim: "Autonomia",
+      text: "Com que frequência você tem liberdade para decidir como fazer seu trabalho?",
+    },
+    {
+      dim: "Suporte da liderança",
+      text: "Com que frequência seu superior direto está disposto a ouvir seus problemas de trabalho?",
+    },
+    {
+      dim: "Insegurança",
+      text: "Com que frequência você se preocupa em ficar desempregado(a)?",
+    },
+    {
+      dim: "Esgotamento",
+      text: "Com que frequência você se sente esgotado(a) emocionalmente por causa do trabalho?",
+    },
+  ];
+
+  // Escala Likert oficial de 5 pontos — ícone + palavra, sem alterar o
+  // significado das categorias.
+  const SCALE = [
+    { label: "Nunca",          emoji: "😄" },
+    { label: "Raramente",      emoji: "🙂" },
+    { label: "Às vezes",       emoji: "😐" },
+    { label: "Frequentemente", emoji: "😟" },
+    { label: "Sempre",         emoji: "😣" },
+  ];
+
+  let current = 0;
+  const answers = new Array(QUESTIONS.length).fill(null);
+
+  const stepsEl = document.getElementById("steps");
+  const dimEl = document.getElementById("dim");
+  const questionEl = document.getElementById("question");
+  const optionsEl = document.getElementById("options");
+  const quizCard = document.getElementById("quizCard");
+  const doneCard = document.getElementById("doneCard");
+
+  function renderSteps(){
+    stepsEl.innerHTML = "";
+    QUESTIONS.forEach((_, i) => {
+      const s = document.createElement("div");
+      s.className = "step" + (i < current ? " done" : i === current ? " current" : "");
+      stepsEl.appendChild(s);
+    });
+  }
+
+  function renderQuestion(){
+    const q = QUESTIONS[current];
+    dimEl.textContent = q.dim;
+    questionEl.textContent = q.text;
+    optionsEl.innerHTML = "";
+
+    SCALE.forEach((opt, i) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "opt";
+      btn.innerHTML = `<span class="emoji">${opt.emoji}</span><span>${opt.label}</span>`;
+      btn.addEventListener("click", () => selectAnswer(i));
+      optionsEl.appendChild(btn);
+    });
+
+    renderSteps();
+  }
+
+  function selectAnswer(value){
+    answers[current] = value;
+    // feedback visual rápido antes de avançar sozinho — sem precisar de
+    // um botão "próximo" separado.
+    const buttons = optionsEl.querySelectorAll(".opt");
+    buttons.forEach((b, i) => b.classList.toggle("selected", i === value));
+
+    setTimeout(() => {
+      if (current < QUESTIONS.length - 1) {
+        current += 1;
+        renderQuestion();
+      } else {
+        finish();
+      }
+    }, 260);
+  }
+
+  async function finish(){
+    quizCard.classList.add("hidden");
+    doneCard.classList.remove("hidden");
+
+    // Envia para a função serverless. `code` vem do link que o RH
+    // enviou (parâmetro na URL), ex: questionario.html?code=abc123
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const orgId = params.get("org");
+    const roundId = params.get("round");
+
+    if (!code || !orgId || !roundId) return; // modo demo, sem envio real
+
+    try {
+      await fetch("/api/submit-response", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orgId, roundId, code,
+          answers: QUESTIONS.map((q, i) => ({ dimension: q.dim, value: answers[i] })),
+        }),
+      });
+    } catch (e) {
+      // silencioso no rascunho — tratamento de erro de rede fica para
+      // a próxima iteração
+    }
+  }
+
+  renderQuestion();
+</script>
+
+</body>
+</html>

@@ -14,9 +14,9 @@
     --teal-deep: #163F3A;
     --amber: #E3A23C;
     --amber-soft: #F6E3C2;
-    --red: #B3453B;
-    --red-soft: #F5E1DE;
     --line: #DCE4DF;
+    --error: #B3453A;
+    --error-soft: #F5E2DF;
     --radius: 20px;
     --shadow: 0 10px 30px -12px rgba(22,63,58,0.18);
   }
@@ -32,6 +32,9 @@
     justify-content:center;
     min-height:100vh;
     padding: 20px;
+  }
+  @font-face{
+    /* usa fontes do sistema por padrão; Poppins carregado via link abaixo para o título */
   }
   .app{
     width:100%;
@@ -163,19 +166,19 @@
   }
   .trust svg{ flex-shrink:0; margin-top:1px; }
 
-  /* ---------- Telas de status (enviando / sucesso / erro) ---------- */
+  /* ---------- Tela de status (envio / sucesso / erro / já respondido) ---------- */
   .status-screen{
     text-align:center;
     padding: 46px 24px;
   }
-  .status-screen .check{
+  .status-screen .icon{
     width:64px; height:64px; border-radius:50%;
-    background: var(--teal);
     display:flex; align-items:center; justify-content:center;
     margin: 0 auto 18px;
   }
-  .status-screen.is-error .check{ background: var(--red); }
-  .status-screen.is-pending .check{ background: var(--amber); }
+  .status-screen .icon.tone-teal{ background: var(--teal); }
+  .status-screen .icon.tone-error{ background: var(--error); }
+  .status-screen .icon.tone-amber{ background: var(--amber); }
   .status-screen h2{
     font-family:"Poppins", sans-serif;
     font-size:20px;
@@ -187,39 +190,43 @@
     line-height:1.6;
     margin:0;
   }
-
-  .spinner{
-    width:28px; height:28px;
-    border-radius:50%;
-    border: 3px solid rgba(255,255,255,0.4);
-    border-top-color: #fff;
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin{ to{ transform: rotate(360deg); } }
-
-  .retry-btn{
+  .status-screen .retry-btn{
     margin-top: 22px;
     display:inline-flex;
     align-items:center;
-    justify-content:center;
-    padding: 13px 22px;
-    border-radius: 14px;
-    border: 1.5px solid var(--teal);
-    background: #FAFBFA;
-    color: var(--teal-deep);
+    gap:8px;
+    padding: 12px 22px;
+    border-radius: 12px;
+    border: none;
+    background: var(--teal);
+    color: #fff;
     font-family:"Inter", sans-serif;
-    font-size:15px;
+    font-size:14.5px;
     font-weight:600;
     cursor:pointer;
     transition: background .15s ease, transform .08s ease;
   }
-  .retry-btn:active{ transform: scale(0.98); }
+  .status-screen .retry-btn:active{ transform: scale(0.98); }
+  .status-screen .retry-btn:disabled{
+    background: var(--ink-soft);
+    cursor: default;
+  }
+
+  /* spinner simples para o estado "enviando" */
+  .spinner{
+    width:26px; height:26px;
+    border-radius:50%;
+    border: 3px solid rgba(255,255,255,0.35);
+    border-top-color: #fff;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
 
   .hidden{ display:none; }
 
   @media (prefers-reduced-motion: reduce){
     *{ transition:none !important; }
-    .spinner{ animation: none; }
+    .spinner{ animation-duration: 1.6s; }
   }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -246,33 +253,13 @@
     </div>
   </div>
 
-  <!-- Enviando -->
-  <div class="card status-screen is-pending hidden" id="sendingCard">
-    <div class="check"><div class="spinner"></div></div>
-    <h2>Enviando suas respostas…</h2>
-    <p>Isso leva só um instante.</p>
-  </div>
-
-  <!-- Sucesso -->
-  <div class="card status-screen hidden" id="doneCard">
-    <div class="check">
-      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
-        <path d="M20 6 9 17l-5-5"/>
-      </svg>
-    </div>
-    <h2>Respostas enviadas</h2>
-    <p>Obrigado por participar. Ninguém, nem a empresa, consegue saber qual foi a sua resposta individual.</p>
-  </div>
-
-  <!-- Erro -->
-  <div class="card status-screen is-error hidden" id="errorCard">
-    <div class="check">
-      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
-        <path d="M12 8v5M12 16.5h.01M12 3 2 20h20L12 3Z" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    </div>
-    <h2 id="errorTitle">Não foi possível enviar</h2>
-    <p id="errorMessage">Verifique sua conexão e tente novamente.</p>
+  <!-- Cartão de status único: conteúdo trocado dinamicamente conforme o
+       resultado do envio (enviando / sucesso / erro recuperável / já
+       respondido). Fica escondido até finish() ser chamado. -->
+  <div class="card status-screen hidden" id="statusCard">
+    <div class="icon" id="statusIcon"></div>
+    <h2 id="statusTitle"></h2>
+    <p id="statusText"></p>
     <button type="button" class="retry-btn hidden" id="retryBtn">Tentar novamente</button>
   </div>
 </div>
@@ -314,21 +301,16 @@
 
   let current = 0;
   const answers = new Array(QUESTIONS.length).fill(null);
-  // Guarda o contexto do envio (code/orgId/roundId) para permitir "Tentar
-  // novamente" sem precisar reler a URL nem repetir o questionário.
-  let submitContext = null;
 
   const stepsEl = document.getElementById("steps");
   const dimEl = document.getElementById("dim");
   const questionEl = document.getElementById("question");
   const optionsEl = document.getElementById("options");
-
   const quizCard = document.getElementById("quizCard");
-  const sendingCard = document.getElementById("sendingCard");
-  const doneCard = document.getElementById("doneCard");
-  const errorCard = document.getElementById("errorCard");
-  const errorTitleEl = document.getElementById("errorTitle");
-  const errorMessageEl = document.getElementById("errorMessage");
+  const statusCard = document.getElementById("statusCard");
+  const statusIcon = document.getElementById("statusIcon");
+  const statusTitle = document.getElementById("statusTitle");
+  const statusText = document.getElementById("statusText");
   const retryBtn = document.getElementById("retryBtn");
 
   function renderSteps(){
@@ -375,122 +357,143 @@
     }, 260);
   }
 
-  // ---------- Telas de status ----------
-  function showCard(card){
-    [quizCard, sendingCard, doneCard, errorCard].forEach((c) => c.classList.add("hidden"));
-    card.classList.remove("hidden");
+  // ---------- Ícones (inline, sem depender de request externo) ----------
+  const ICONS = {
+    check: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg>',
+    warn:  '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>',
+    info:  '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M12 16v-4M12 8h.01"/><circle cx="12" cy="12" r="9"/></svg>',
+    spin:  '<div class="spinner"></div>',
+  };
+
+  // Troca o card da pergunta pelo card de status e preenche o conteúdo.
+  // tone: 'teal' | 'error' | 'amber'  |  icon: chave em ICONS
+  function showStatus({ tone, icon, title, text, showRetry }){
+    quizCard.classList.add("hidden");
+    statusCard.classList.remove("hidden");
+
+    statusIcon.className = "icon tone-" + tone;
+    statusIcon.innerHTML = ICONS[icon];
+    statusTitle.textContent = title;
+    statusText.textContent = text;
+    retryBtn.classList.toggle("hidden", !showRetry);
   }
 
   function showSending(){
-    showCard(sendingCard);
+    showStatus({
+      tone: "teal",
+      icon: "spin",
+      title: "Enviando suas respostas…",
+      text: "Isso leva só um instante. Não feche esta página.",
+      showRetry: false,
+    });
   }
 
-  function showDone(){
-    showCard(doneCard);
+  function showSuccess(){
+    showStatus({
+      tone: "teal",
+      icon: "check",
+      title: "Respostas enviadas",
+      text: "Obrigado por participar. Ninguém, nem a empresa, consegue saber qual foi a sua resposta individual.",
+      showRetry: false,
+    });
   }
 
-  // retryable: mostra o botão "Tentar novamente" (falha transitória —
-  // rede, servidor). Quando false, o erro é permanente (ex: link
-  // inválido/expirado) e insistir não resolve nada.
-  function showError(title, message, retryable){
-    errorTitleEl.textContent = title;
-    errorMessageEl.textContent = message;
-    retryBtn.classList.toggle("hidden", !retryable);
-    showCard(errorCard);
+  // Erro recuperável: rede caiu, servidor fora do ar, etc. As respostas
+  // continuam em memória — o botão reenvia o mesmo payload.
+  function showRetryableError(message){
+    showStatus({
+      tone: "error",
+      icon: "warn",
+      title: "Não foi possível enviar",
+      text: message,
+      showRetry: true,
+    });
   }
 
-  retryBtn.addEventListener("click", () => {
-    if (submitContext) submitAnswers(submitContext);
-  });
+  // Estado terminal: o link já foi usado antes. Não é um erro do
+  // trabalhador nem algo que reenviar resolve — não mostra retry.
+  function showAlreadySubmitted(){
+    showStatus({
+      tone: "amber",
+      icon: "info",
+      title: "Este link já foi usado",
+      text: "Já existe uma resposta registrada com este acesso. Cada link só pode ser usado uma vez.",
+      showRetry: false,
+    });
+  }
+
+  // Link mal formado / código inválido — também não adianta tentar de novo.
+  function showInvalidLink(){
+    showStatus({
+      tone: "error",
+      icon: "warn",
+      title: "Link inválido",
+      text: "Este link de acesso não é válido ou expirou. Peça um novo link ao RH da sua empresa.",
+      showRetry: false,
+    });
+  }
 
   async function finish(){
+    // Modo demo: sem parâmetros de envio real na URL, só mostra sucesso.
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     const orgId = params.get("org");
     const roundId = params.get("round");
 
     if (!code || !orgId || !roundId) {
-      // modo demo, sem envio real
-      showDone();
+      showSuccess();
       return;
     }
 
-    submitContext = { code, orgId, roundId };
-    await submitAnswers(submitContext);
+    await submit(code, orgId, roundId);
   }
 
-  async function submitAnswers(ctx){
+  async function submit(code, orgId, roundId){
     showSending();
+    retryBtn.disabled = true;
 
-    let response;
+    let res;
     try {
-      response = await fetch("/api/submit-response", {
+      res = await fetch("/api/submit-response", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orgId: ctx.orgId,
-          roundId: ctx.roundId,
-          code: ctx.code,
+          orgId, roundId, code,
           answers: QUESTIONS.map((q, i) => ({ dimension: q.dim, value: answers[i] })),
         }),
       });
-    } catch (networkErr) {
-      // fetch rejeita a Promise em falha de rede (sem conexão, DNS, CORS
-      // bloqueado etc.) — aqui não sabemos se o servidor recebeu ou não,
-      // então vale a pena permitir tentar de novo.
-      showError(
-        "Sem conexão",
-        "Não conseguimos enviar suas respostas. Verifique sua internet e tente novamente.",
-        true
-      );
+    } catch (e) {
+      // fetch só rejeita em falha de rede/DNS/CORS — não em respostas
+      // 4xx/5xx, que precisam ser checadas por res.ok abaixo.
+      showRetryableError("Sem conexão com a internet. Verifique sua rede e tente novamente.");
+      retryBtn.disabled = false;
       return;
     }
 
-    if (response.ok) {
-      showDone();
+    if (res.ok) {
+      showSuccess();
       return;
     }
 
-    // Servidor respondeu, mas recusou a submissão — lê a mensagem que a
-    // API já devolve em { error } (ver api/submit-response.js).
-    let serverMessage = null;
-    try {
-      const body = await response.json();
-      serverMessage = body && body.error;
-    } catch (parseErr) {
-      // corpo não era JSON — segue com mensagem genérica abaixo.
+    if (res.status === 409) {
+      // Convite já usado (Decisão 5 — resposta é definitiva). Reenviar
+      // não resolve nada, então não oferecemos retry.
+      showAlreadySubmitted();
+      return;
     }
 
-    if (response.status === 409) {
-      // Já respondida com este código: não é uma falha para tentar de
-      // novo (Decisão 5 — resposta é definitiva), então não mostramos
-      // botão de retry.
-      showError(
-        "Esta pesquisa já foi respondida",
-        serverMessage || "Este acesso já foi usado para enviar uma resposta.",
-        false
-      );
-    } else if (response.status === 404) {
-      // Código de acesso inválido — link errado ou expirado, tentar de
-      // novo com os mesmos dados não muda o resultado.
-      showError(
-        "Link inválido",
-        serverMessage || "Este link de acesso não é válido. Peça um novo link ao RH.",
-        false
-      );
-    } else if (response.status >= 500) {
-      showError(
-        "Erro no servidor",
-        serverMessage || "Algo deu errado do nosso lado. Tente novamente em instantes.",
-        true
-      );
-    } else {
-      showError(
-        "Não foi possível enviar",
-        serverMessage || "Não foi possível registrar sua resposta. Tente novamente.",
-        true
-      );
+    if (res.status === 404) {
+      showInvalidLink();
+      return;
     }
+
+    // 400 (payload malformado), 500 (erro do servidor) e qualquer outro
+    // código: tratamos como recuperável, já que reenviar pode funcionar.
+    showRetryableError("Algo deu errado do nosso lado. Você pode tentar enviar de novo.");
+    retryBtn.disabled = false;
+
+    // guarda os últimos parâmetros para o botão de retry usar
+    retryBtn.onclick = () => submit(code, orgId, roundId);
   }
 
   renderQuestion();

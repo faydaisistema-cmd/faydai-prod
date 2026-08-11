@@ -14,6 +14,8 @@
     --teal-deep: #163F3A;
     --amber: #E3A23C;
     --amber-soft: #F6E3C2;
+    --red: #B3453B;
+    --red-soft: #F5E1DE;
     --line: #DCE4DF;
     --radius: 20px;
     --shadow: 0 10px 30px -12px rgba(22,63,58,0.18);
@@ -30,9 +32,6 @@
     justify-content:center;
     min-height:100vh;
     padding: 20px;
-  }
-  @font-face{
-    /* usa fontes do sistema por padrão; Poppins carregado via link abaixo para o título */
   }
   .app{
     width:100%;
@@ -164,33 +163,63 @@
   }
   .trust svg{ flex-shrink:0; margin-top:1px; }
 
-  /* ---------- Tela final ---------- */
-  .done-screen{
+  /* ---------- Telas de status (enviando / sucesso / erro) ---------- */
+  .status-screen{
     text-align:center;
     padding: 46px 24px;
   }
-  .done-screen .check{
+  .status-screen .check{
     width:64px; height:64px; border-radius:50%;
     background: var(--teal);
     display:flex; align-items:center; justify-content:center;
     margin: 0 auto 18px;
   }
-  .done-screen h2{
+  .status-screen.is-error .check{ background: var(--red); }
+  .status-screen.is-pending .check{ background: var(--amber); }
+  .status-screen h2{
     font-family:"Poppins", sans-serif;
     font-size:20px;
     margin: 0 0 8px;
   }
-  .done-screen p{
+  .status-screen p{
     color: var(--ink-soft);
     font-size:14.5px;
     line-height:1.6;
     margin:0;
   }
 
+  .spinner{
+    width:28px; height:28px;
+    border-radius:50%;
+    border: 3px solid rgba(255,255,255,0.4);
+    border-top-color: #fff;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+
+  .retry-btn{
+    margin-top: 22px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding: 13px 22px;
+    border-radius: 14px;
+    border: 1.5px solid var(--teal);
+    background: #FAFBFA;
+    color: var(--teal-deep);
+    font-family:"Inter", sans-serif;
+    font-size:15px;
+    font-weight:600;
+    cursor:pointer;
+    transition: background .15s ease, transform .08s ease;
+  }
+  .retry-btn:active{ transform: scale(0.98); }
+
   .hidden{ display:none; }
 
   @media (prefers-reduced-motion: reduce){
     *{ transition:none !important; }
+    .spinner{ animation: none; }
   }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -217,7 +246,15 @@
     </div>
   </div>
 
-  <div class="card done-screen hidden" id="doneCard">
+  <!-- Enviando -->
+  <div class="card status-screen is-pending hidden" id="sendingCard">
+    <div class="check"><div class="spinner"></div></div>
+    <h2>Enviando suas respostas…</h2>
+    <p>Isso leva só um instante.</p>
+  </div>
+
+  <!-- Sucesso -->
+  <div class="card status-screen hidden" id="doneCard">
     <div class="check">
       <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
         <path d="M20 6 9 17l-5-5"/>
@@ -225,6 +262,18 @@
     </div>
     <h2>Respostas enviadas</h2>
     <p>Obrigado por participar. Ninguém, nem a empresa, consegue saber qual foi a sua resposta individual.</p>
+  </div>
+
+  <!-- Erro -->
+  <div class="card status-screen is-error hidden" id="errorCard">
+    <div class="check">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+        <path d="M12 8v5M12 16.5h.01M12 3 2 20h20L12 3Z" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <h2 id="errorTitle">Não foi possível enviar</h2>
+    <p id="errorMessage">Verifique sua conexão e tente novamente.</p>
+    <button type="button" class="retry-btn hidden" id="retryBtn">Tentar novamente</button>
   </div>
 </div>
 
@@ -265,13 +314,22 @@
 
   let current = 0;
   const answers = new Array(QUESTIONS.length).fill(null);
+  // Guarda o contexto do envio (code/orgId/roundId) para permitir "Tentar
+  // novamente" sem precisar reler a URL nem repetir o questionário.
+  let submitContext = null;
 
   const stepsEl = document.getElementById("steps");
   const dimEl = document.getElementById("dim");
   const questionEl = document.getElementById("question");
   const optionsEl = document.getElementById("options");
+
   const quizCard = document.getElementById("quizCard");
+  const sendingCard = document.getElementById("sendingCard");
   const doneCard = document.getElementById("doneCard");
+  const errorCard = document.getElementById("errorCard");
+  const errorTitleEl = document.getElementById("errorTitle");
+  const errorMessageEl = document.getElementById("errorMessage");
+  const retryBtn = document.getElementById("retryBtn");
 
   function renderSteps(){
     stepsEl.innerHTML = "";
@@ -317,31 +375,121 @@
     }, 260);
   }
 
-  async function finish(){
-    quizCard.classList.add("hidden");
-    doneCard.classList.remove("hidden");
+  // ---------- Telas de status ----------
+  function showCard(card){
+    [quizCard, sendingCard, doneCard, errorCard].forEach((c) => c.classList.add("hidden"));
+    card.classList.remove("hidden");
+  }
 
-    // Envia para a função serverless. `code` vem do link que o RH
-    // enviou (parâmetro na URL), ex: questionario.html?code=abc123
+  function showSending(){
+    showCard(sendingCard);
+  }
+
+  function showDone(){
+    showCard(doneCard);
+  }
+
+  // retryable: mostra o botão "Tentar novamente" (falha transitória —
+  // rede, servidor). Quando false, o erro é permanente (ex: link
+  // inválido/expirado) e insistir não resolve nada.
+  function showError(title, message, retryable){
+    errorTitleEl.textContent = title;
+    errorMessageEl.textContent = message;
+    retryBtn.classList.toggle("hidden", !retryable);
+    showCard(errorCard);
+  }
+
+  retryBtn.addEventListener("click", () => {
+    if (submitContext) submitAnswers(submitContext);
+  });
+
+  async function finish(){
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     const orgId = params.get("org");
     const roundId = params.get("round");
 
-    if (!code || !orgId || !roundId) return; // modo demo, sem envio real
+    if (!code || !orgId || !roundId) {
+      // modo demo, sem envio real
+      showDone();
+      return;
+    }
 
+    submitContext = { code, orgId, roundId };
+    await submitAnswers(submitContext);
+  }
+
+  async function submitAnswers(ctx){
+    showSending();
+
+    let response;
     try {
-      await fetch("/api/submit-response", {
+      response = await fetch("/api/submit-response", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orgId, roundId, code,
+          orgId: ctx.orgId,
+          roundId: ctx.roundId,
+          code: ctx.code,
           answers: QUESTIONS.map((q, i) => ({ dimension: q.dim, value: answers[i] })),
         }),
       });
-    } catch (e) {
-      // silencioso no rascunho — tratamento de erro de rede fica para
-      // a próxima iteração
+    } catch (networkErr) {
+      // fetch rejeita a Promise em falha de rede (sem conexão, DNS, CORS
+      // bloqueado etc.) — aqui não sabemos se o servidor recebeu ou não,
+      // então vale a pena permitir tentar de novo.
+      showError(
+        "Sem conexão",
+        "Não conseguimos enviar suas respostas. Verifique sua internet e tente novamente.",
+        true
+      );
+      return;
+    }
+
+    if (response.ok) {
+      showDone();
+      return;
+    }
+
+    // Servidor respondeu, mas recusou a submissão — lê a mensagem que a
+    // API já devolve em { error } (ver api/submit-response.js).
+    let serverMessage = null;
+    try {
+      const body = await response.json();
+      serverMessage = body && body.error;
+    } catch (parseErr) {
+      // corpo não era JSON — segue com mensagem genérica abaixo.
+    }
+
+    if (response.status === 409) {
+      // Já respondida com este código: não é uma falha para tentar de
+      // novo (Decisão 5 — resposta é definitiva), então não mostramos
+      // botão de retry.
+      showError(
+        "Esta pesquisa já foi respondida",
+        serverMessage || "Este acesso já foi usado para enviar uma resposta.",
+        false
+      );
+    } else if (response.status === 404) {
+      // Código de acesso inválido — link errado ou expirado, tentar de
+      // novo com os mesmos dados não muda o resultado.
+      showError(
+        "Link inválido",
+        serverMessage || "Este link de acesso não é válido. Peça um novo link ao RH.",
+        false
+      );
+    } else if (response.status >= 500) {
+      showError(
+        "Erro no servidor",
+        serverMessage || "Algo deu errado do nosso lado. Tente novamente em instantes.",
+        true
+      );
+    } else {
+      showError(
+        "Não foi possível enviar",
+        serverMessage || "Não foi possível registrar sua resposta. Tente novamente.",
+        true
+      );
     }
   }
 

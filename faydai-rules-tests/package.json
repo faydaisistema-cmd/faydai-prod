@@ -1,15 +1,20 @@
 {
-  "name": "faydai-firestore-rules-tests",
+  "name": "faydai-admin",
   "version": "1.0.0",
   "private": true,
-  "type": "commonjs",
+  "type": "module",
   "scripts": {
-    "test": "firebase emulators:exec --only firestore \"mocha test --timeout 20000\"",
-    "emulator": "firebase emulators:start --only firestore"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "firebase": "^10.12.0"
   },
   "devDependencies": {
-    "@firebase/rules-unit-testing": "^3.0.4",
-    "firebase-tools": "^13.0.0",
-    "mocha": "^10.4.0"
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.0"
   }
 }

@@ -4,10 +4,28 @@
 // cada setor-folha, soma-se o número de respostas; se abaixo do limiar
 // mínimo, sobe recursivamente para o setor pai, fundindo contagens, até
 // atingir o limiar ou esgotar a hierarquia.
+//
+// O doc gravado em `reports/{unitId}` é a ÚNICA fonte de dados que o
+// dashboard da empresa (PsychosocialDashboard.jsx) consulta — ver
+// controle-acesso-custom-claims.md, seção 2. O shape abaixo é o
+// contrato entre esta função e o dashboard; qualquer mudança de campo
+// aqui exige atualizar o dashboard também.
 
 const { getDb } = require("./_lib/firebaseAdmin");
-const { computeAggregates } = require("./_lib/computeAggregates");
 const { FieldValue } = require("firebase-admin/firestore");
+
+// TODO: mover para a coleção `dimensions` (campo `polarity` ou
+// `reverseScored: boolean`) quando ela deixar de ser um placeholder.
+// Enquanto o questionário estiver hardcoded em questionario.html, a
+// polaridade também precisa estar hardcoded aqui — do contrário a
+// média das dimensões "positivas" (onde frequência alta = bom) sai
+// com o sentido invertido em relação às "negativas".
+const REVERSE_SCORED_DIMENSIONS = new Set([
+  "Carga de trabalho",   // frequência alta de não terminar tarefas = pior
+  "Insegurança",         // frequência alta de medo de desemprego = pior
+  "Esgotamento",         // frequência alta de esgotamento = pior
+]);
+// Não-reversas (frequência alta = melhor): "Autonomia", "Suporte da liderança"
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
@@ -70,17 +88,24 @@ module.exports = async function handler(req, res) {
     if (mergedCount === 0) continue; // ninguém respondeu nesse ramo ainda
 
     if (mergedCount >= minK) {
-      const reportRef = roundRef.collection("reports").doc(fusedFrom[fusedFrom.length - 1]);
+      const finalUnitId = fusedFrom[fusedFrom.length - 1];
+      const { dimensions, overallAverage } = computeAggregates(mergedAnswers);
+
+      const reportRef = roundRef.collection("reports").doc(finalUnitId);
       batch.set(reportRef, {
-        n: mergedCount,
+        unitId: finalUnitId,
+        unitName: units[finalUnitId]?.name || finalUnitId,
         fusedFrom,
-        aggregates: computeAggregates(mergedAnswers),
+        n: mergedCount,
+        dimensions,
+        overallAverage,
         computedAt: FieldValue.serverTimestamp(),
       });
       fusedFrom.forEach((id) => reportedUnits.add(id));
     } else {
       // Caso-limite: mesmo subindo até o topo da hierarquia, não
-      // atingiu o limiar. Nenhum relatório é gravado para este ramo.
+      // atingiu o limiar. Nenhum relatório é gravado para este ramo —
+      // decisão de produto ainda em aberto (ver documento de decisões).
       skippedBelowThreshold.push({ unitId, mergedCount });
       fusedFrom.forEach((id) => reportedUnits.add(id));
     }
@@ -89,3 +114,43 @@ module.exports = async function handler(req, res) {
   await batch.commit();
   return res.status(200).json({ status: "ok", skippedBelowThreshold });
 };
+
+/**
+ * Calcula, por dimensão, a média das respostas (escala 0–4 de
+ * frequência no questionário) já convertida para score 1–5 onde
+ * 5 = melhor / menor risco — orientação que o dashboard espera
+ * (scoreColor: >=4 baixo risco, <2.5 alto risco).
+ *
+ * mergedAnswers: array de arrays de { dimension: string, value: number }
+ * — um array por resposta de trabalhador.
+ */
+function computeAggregates(mergedAnswers) {
+  const sums = {};   // { [dimension]: { sum, n } }
+
+  for (const answers of mergedAnswers) {
+    for (const { dimension, value } of answers) {
+      const bucket = sums[dimension] || { sum: 0, n: 0 };
+      const reversed = REVERSE_SCORED_DIMENSIONS.has(dimension);
+      const score = reversed ? 5 - value : 1 + value; // 0–4 -> 1–5
+      bucket.sum += score;
+      bucket.n += 1;
+      sums[dimension] = bucket;
+    }
+  }
+
+  const dimensions = {};
+  let overallSum = 0;
+  let overallN = 0;
+
+  for (const [dimension, { sum, n }] of Object.entries(sums)) {
+    const average = n > 0 ? sum / n : null;
+    dimensions[dimension] = { average, n };
+    if (average != null) {
+      overallSum += average;
+      overallN += 1;
+    }
+  }
+
+  const overallAverage = overallN > 0 ? overallSum / overallN : null;
+  return { dimensions, overallAverage };
+}

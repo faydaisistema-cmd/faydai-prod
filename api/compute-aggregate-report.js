@@ -19,15 +19,15 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: "Método não permitido." });
   }
 
-  // requireBackofficeAuth já escreve a resposta (401/403/400) e retorna
-  // null em caso de falha — o handler só precisa checar e sair.
-  const auth = await requireBackofficeAuth(req, res);
-  if (!auth) return;
-
   const { orgId, roundId } = req.body;
   if (!orgId || !roundId) {
     return res.status(400).json({ error: "orgId e roundId são obrigatórios." });
   }
+
+  // requireBackofficeAuth já escreve a resposta (401/403) e retorna
+  // null em caso de falha — o handler só precisa checar e sair.
+  const user = await requireBackofficeAuth(req, res, orgId);
+  if (!user) return;
 
   const db = getDb();
   const roundRef = db.collection("orgs").doc(orgId).collection("rounds").doc(roundId);

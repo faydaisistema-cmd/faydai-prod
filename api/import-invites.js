@@ -5,10 +5,13 @@
 // blind index e imediatamente descartado — nunca é escrito em nenhum
 // documento do Firestore.
 //
-// Restrita a quem tem o papel de back-office (checagem simplificada por
-// token compartilhado — trocar por autenticação real antes de produção).
+// Restrita a quem tem o custom claim backoffice_admin com acesso ao
+// orgId da requisição — ver api/_lib/backofficeAuth.js e
+// controle-acesso-custom-claims.md, seção 1. Substitui o mecanismo
+// anterior de token compartilhado (x-backoffice-token).
 
 const { getDb, blindIndex, generateInviteCode } = require("./_lib/firebaseAdmin");
+const { requireBackofficeAuth } = require("./_lib/backofficeAuth");
 const { FieldValue } = require("firebase-admin/firestore");
 
 module.exports = async function handler(req, res) {
@@ -16,9 +19,10 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: "Método não permitido." });
   }
 
-  if (req.headers["x-backoffice-token"] !== process.env.BACKOFFICE_TOKEN) {
-    return res.status(403).json({ error: "Operação restrita ao back-office." });
-  }
+  // requireBackofficeAuth já escreve a resposta (401/403/400) e retorna
+  // null em caso de falha — o handler só precisa checar e sair.
+  const auth = await requireBackofficeAuth(req, res);
+  if (!auth) return;
 
   const { orgId, roundId, employees } = req.body;
   // employees: [{ stableEmployeeId, unitId }, ...] — vem do sistema de

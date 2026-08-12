@@ -21,11 +21,20 @@
 //   const { requireBackofficeAuth } = require("./_lib/backofficeAuth");
 //
 //   module.exports = async function handler(req, res) {
-//     const auth = await requireBackofficeAuth(req, res);
-//     if (!auth) return; // requireBackofficeAuth já respondeu (401/403)
 //     const { orgId, roundId } = req.body;
+//     if (!orgId || !roundId) {
+//       return res.status(400).json({ error: "orgId e roundId são obrigatórios." });
+//     }
+//     const user = await requireBackofficeAuth(req, res, orgId);
+//     if (!user) return; // requireBackofficeAuth já respondeu (401/403)
 //     ...
 //   };
+//
+// Assinatura alinhada com relatorioautenticacaobackofficefaydai.pdf, seção
+// 4.1 — orgId é passado explicitamente pelo handler (já validado como
+// presente no corpo), em vez de o middleware adivinhar de onde extraí-lo.
+// Isso mantém o middleware genérico e a validação de formato do corpo como
+// responsabilidade do handler, não do middleware de auth.
 
 const { getAuth } = require("firebase-admin/auth");
 const { getDb } = require("./firebaseAdmin"); // garante initializeApp() já chamado
@@ -33,22 +42,25 @@ const { getDb } = require("./firebaseAdmin"); // garante initializeApp() já cha
 /**
  * Verifica o ID token do Firebase enviado no header Authorization e
  * confirma que o chamador tem o claim backoffice_admin com acesso ao
- * orgId da requisição.
+ * orgId informado.
  *
- * O orgId usado na comparação vem SEMPRE do corpo/rota da requisição,
- * nunca só do claim isoladamente — impede que um token válido para
- * org_123 seja usado para operar org_456 (ver controle-acesso-custom-
- * claims.md, seção 1, "Regra de verificação").
+ * O orgId usado na comparação é sempre o que o HANDLER extraiu da
+ * requisição (corpo, query, rota), nunca só o claim isoladamente —
+ * impede que um token válido para org_123 seja usado para operar
+ * org_456 (ver controle-acesso-custom-claims.md, seção 1, "Regra de
+ * verificação").
  *
  * Em caso de falha, já escreve a resposta HTTP (401/403) e retorna
- * `null`. Em caso de sucesso, retorna o decoded token para uso
+ * `null`. Em caso de sucesso, retorna `{ uid, role }` para uso
  * opcional pelo handler (ex: auditoria/logging de qual operador agiu).
  *
  * @param {import('http').IncomingMessage} req
  * @param {import('http').ServerResponse} res
- * @returns {Promise<import('firebase-admin/auth').DecodedIdToken|null>}
+ * @param {string} orgId - organização que a operação pretende afetar,
+ *   já extraída pelo handler chamador
+ * @returns {Promise<{uid: string, role: string}|null>}
  */
-async function requireBackofficeAuth(req, res) {
+async function requireBackofficeAuth(req, res, orgId) {
   getDb(); // efeito colateral: garante initializeApp() chamado uma vez
 
   const authHeader = req.headers.authorization || "";
@@ -70,25 +82,19 @@ async function requireBackofficeAuth(req, res) {
 
   const claim = decoded.backoffice;
   if (!claim || claim.role !== "backoffice_admin" || !Array.isArray(claim.orgIds)) {
-    res.status(403).json({ error: "Operação restrita ao back-office." });
+    res.status(403).json({ error: "Usuário sem permissão para esta organização." });
     return null;
   }
 
-  // orgId pode vir do corpo (POST) ou de query/rota — normaliza aqui.
-  const orgId = req.body?.orgId || req.query?.orgId;
-  if (!orgId) {
-    res.status(400).json({ error: "orgId é obrigatório." });
+  if (!orgId || !claim.orgIds.includes(orgId)) {
+    // Comentário deliberado: mesma mensagem tanto para "claim não cobre
+    // esse orgId" quanto para "orgId ausente" — não revelar detalhe que
+    // ajude enumeração.
+    res.status(403).json({ error: "Usuário sem permissão para esta organização." });
     return null;
   }
 
-  if (!claim.orgIds.includes(orgId)) {
-    // Comentário deliberado: não revelar se orgId existe ou não —
-    // resposta idêntica a "sem permissão nenhuma", evita enumeração.
-    res.status(403).json({ error: "Operação restrita ao back-office." });
-    return null;
-  }
-
-  return decoded;
+  return { uid: decoded.uid, role: claim.role };
 }
 
 module.exports = { requireBackofficeAuth };

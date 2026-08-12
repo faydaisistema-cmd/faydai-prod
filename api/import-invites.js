@@ -19,11 +19,6 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: "Método não permitido." });
   }
 
-  // requireBackofficeAuth já escreve a resposta (401/403/400) e retorna
-  // null em caso de falha — o handler só precisa checar e sair.
-  const auth = await requireBackofficeAuth(req, res);
-  if (!auth) return;
-
   const { orgId, roundId, employees } = req.body;
   // employees: [{ stableEmployeeId, unitId }, ...] — vem do sistema de
   // RH da empresa, nunca digitado pelo trabalhador.
@@ -31,6 +26,11 @@ module.exports = async function handler(req, res) {
   if (!orgId || !roundId || !Array.isArray(employees)) {
     return res.status(400).json({ error: "orgId, roundId e employees são obrigatórios." });
   }
+
+  // requireBackofficeAuth já escreve a resposta (401/403) e retorna
+  // null em caso de falha — o handler só precisa checar e sair.
+  const user = await requireBackofficeAuth(req, res, orgId);
+  if (!user) return;
 
   const db = getDb();
   const batch = db.batch();

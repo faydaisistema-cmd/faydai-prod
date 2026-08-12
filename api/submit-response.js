@@ -4,8 +4,17 @@
 // (Decisões 1, 2 e 5). Roda em uma única transação: valida o código,
 // checa duplicidade, grava a resposta, marca o convite como usado e
 // atualiza o metadado de continuidade entre rodadas.
+//
+// Rate limiting (ver _lib/rateLimiter.js): endpoint público sem
+// autenticação, protegido só pelo código de convite — o risco é
+// brute-force de código ou flood, não abuso de uma conta autenticada.
+// Duas camadas por IP: limite frouxo sobre toda tentativa (tolera NAT
+// corporativo — vários trabalhadores do mesmo escritório respondendo
+// ao mesmo tempo) e limite estrito só sobre tentativas com código
+// inválido/já usado (esse é o sinal real de brute-force).
 
 const { getDb } = require("./_lib/firebaseAdmin");
+const { checkGlobalLimit, checkInvalidAttemptLimit } = require("./_lib/rateLimiter");
 const { FieldValue } = require("firebase-admin/firestore");
 
 module.exports = async function handler(req, res) {
@@ -20,6 +29,15 @@ module.exports = async function handler(req, res) {
   }
 
   const db = getDb();
+
+  // Camada 1: limite global por IP, antes de tocar em qualquer dado de
+  // convite. Isso barra flood grosseiro sem precisar saber se o código
+  // é válido.
+  const withinGlobalLimit = await checkGlobalLimit(db, req);
+  if (!withinGlobalLimit) {
+    return res.status(429).json({ error: "Muitas requisições. Tente novamente mais tarde." });
+  }
+
   const roundRef = db.collection("orgs").doc(orgId).collection("rounds").doc(roundId);
   const inviteRef = roundRef.collection("invites").doc(code);
 
@@ -31,6 +49,7 @@ module.exports = async function handler(req, res) {
       if (!inviteSnap.exists) {
         const err = new Error("Código de acesso inválido.");
         err.statusCode = 404;
+        err.invalidAttempt = true;
         throw err;
       }
       const invite = inviteSnap.data();
@@ -40,6 +59,7 @@ module.exports = async function handler(req, res) {
         // permite nova submissão — não existe fluxo de edição.
         const err = new Error("Esta pesquisa já foi respondida com este acesso.");
         err.statusCode = 409;
+        err.invalidAttempt = true;
         throw err;
       }
 
@@ -50,6 +70,7 @@ module.exports = async function handler(req, res) {
       if (linkageSnap.exists) {
         const err = new Error("Já existe uma resposta registrada para este participante nesta rodada.");
         err.statusCode = 409;
+        err.invalidAttempt = true;
         throw err;
       }
 
@@ -87,8 +108,18 @@ module.exports = async function handler(req, res) {
 
     return res.status(200).json({ status: "ok", unitId: result.unitId });
   } catch (err) {
+    // Camada 2: só conta contra o limite quando a tentativa realmente
+    // era inválida (código inexistente, usado, ou duplicado) — nunca
+    // em erro de infraestrutura (5xx), pra não confundir instabilidade
+    // com abuso.
+    if (err.invalidAttempt) {
+      const withinInvalidLimit = await checkInvalidAttemptLimit(db, req);
+      if (!withinInvalidLimit) {
+        return res.status(429).json({ error: "Muitas tentativas inválidas. Tente novamente mais tarde." });
+      }
+    }
+
     const statusCode = err.statusCode || 500;
     return res.status(statusCode).json({ error: err.message });
   }
 };
-

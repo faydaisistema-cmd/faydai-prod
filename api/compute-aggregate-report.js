@@ -12,6 +12,7 @@
 
 const { getDb } = require("./_lib/firebaseAdmin");
 const { requireBackofficeAuth } = require("./_lib/backofficeAuth");
+const { computeAggregates } = require("./_lib/computeAggregates");
 const { FieldValue } = require("firebase-admin/firestore");
 
 module.exports = async function handler(req, res) {
@@ -80,7 +81,7 @@ module.exports = async function handler(req, res) {
       batch.set(reportRef, {
         n: mergedCount,
         fusedFrom,
-        aggregates: computeAggregates(mergedAnswers),
+        ...computeAggregates(mergedAnswers),
         computedAt: FieldValue.serverTimestamp(),
       });
       fusedFrom.forEach((id) => reportedUnits.add(id));
@@ -95,9 +96,3 @@ module.exports = async function handler(req, res) {
   await batch.commit();
   return res.status(200).json({ status: "ok", skippedBelowThreshold });
 };
-
-/** Placeholder — cálculo real das médias/distribuições por dimensão do
- * questionário (COPSOQ ou equivalente, ver dossiê de pesquisa legal). */
-function computeAggregates(answersList) {
-  return { responseCount: answersList.length };
-}

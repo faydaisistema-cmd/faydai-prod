@@ -1,16 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "outputDirectory": "public",
+  "functions": {
+    "api/home.js": {
+      "includeFiles": "public/questionario.html"
+    }
+  },
   "rewrites": [
-    { "source": "/", "destination": "/questionario.html" }
+    { "source": "/", "destination": "/api/home" }
   ],
   "headers": [
-    {
-      "source": "/questionario.html",
-      "headers": [
-        { "key": "Cache-Control", "value": "no-store" }
-      ]
-    },
     {
       "source": "/api/(.*)",
       "headers": [

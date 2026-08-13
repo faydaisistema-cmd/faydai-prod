@@ -1,11 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/", "destination": "/questionario.html" }
+    { "source": "/", "destination": "/public/questionario.html" }
   ],
   "headers": [
     {
-      "source": "/questionario.html",
+      "source": "/public/questionario.html",
       "headers": [
         { "key": "Cache-Control", "value": "no-store" }
       ]

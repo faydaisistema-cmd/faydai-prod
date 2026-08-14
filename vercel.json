@@ -1,20 +1,3 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "functions": {
-    "api/home.js": {
-      "includeFiles": "public/questionario.html"
-    }
-  },
-  "rewrites": [
-    { "source": "/", "destination": "/api/home" }
-  ],
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "no-store" }
-      ]
-    }
-  ],
-  "cleanUrls": false
+  "$schema": "https://openapi.vercel.sh/vercel.json"
 }

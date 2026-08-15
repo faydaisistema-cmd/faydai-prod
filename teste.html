@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <title>Teste das funções</title>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <style>
   body { font-family: monospace; max-width: 700px; margin: 20px auto; padding: 0 12px; }
   h2 { margin-top: 40px; border-bottom: 1px solid #ccc; padding-bottom: 6px; }
@@ -18,9 +20,27 @@
 <h1>Teste das rotas /api</h1>
 <p>Página só de teste — apagar depois que o frontend de verdade existir.</p>
 
+<h2>0. Login (gera o token de verdade)</h2>
+<label>e-mail</label>
+<input id="loginEmail" placeholder="rh@empresa.com">
+<label>senha</label>
+<input id="loginPass" type="password">
+<button onclick="fazerLogin()">Entrar</button>
+<pre id="outLogin">(faça login para preencher os tokens automaticamente)</pre>
+
+<h2>setUserRole (rodar só uma vez por usuário novo)</h2>
+<textarea id="bodySetup">{
+  "setupSecret": "ddc885d82c508910e2f1726ab14c5d738c9e41735bd8e41059919325e8116f2e",
+  "uid": "KjBoczsnq1PZsSo29nCQCTyYObp1",
+  "role": "company_admin",
+  "orgId": "org-teste"
+}</textarea>
+<button onclick="testar('setUserRole', null, 'bodySetup', 'outSetup')">Enviar POST</button>
+<pre id="outSetup">(resultado aparece aqui)</pre>
+
 <h2>1. importInvites</h2>
-<label>Token de autenticação (deixe em branco se ainda não tiver login configurado)</label>
-<input id="token1" placeholder="Bearer token (opcional por enquanto)">
+<label>Token de autenticação (preenchido pelo login acima)</label>
+<input id="token1">
 <label>Corpo da requisição (JSON)</label>
 <textarea id="body1">{
   "orgId": "org-teste",
@@ -44,8 +64,8 @@
 <pre id="out2">(resultado aparece aqui)</pre>
 
 <h2>3. computeAggregateReport</h2>
-<label>Token de autenticação (deixe em branco se ainda não tiver login configurado)</label>
-<input id="token3" placeholder="Bearer token (opcional por enquanto)">
+<label>Token de autenticação (preenchido pelo login acima)</label>
+<input id="token3">
 <label>Corpo da requisição (JSON)</label>
 <textarea id="body3">{
   "orgId": "org-teste",
@@ -55,6 +75,30 @@
 <pre id="out3">(resultado aparece aqui)</pre>
 
 <script>
+// COLE AQUI o firebaseConfig do Passo 2
+const firebaseConfig = {
+  apiKey: "SUA_API_KEY",
+  authDomain: "SEU_PROJETO.firebaseapp.com",
+  projectId: "SEU_PROJETO_ID",
+};
+firebase.initializeApp(firebaseConfig);
+
+async function fazerLogin() {
+  const out = document.getElementById('outLogin');
+  out.textContent = 'entrando...';
+  try {
+    const email = document.getElementById('loginEmail').value;
+    const pass = document.getElementById('loginPass').value;
+    const cred = await firebase.auth().signInWithEmailAndPassword(email, pass);
+    const token = await cred.user.getIdToken();
+    document.getElementById('token1').value = token;
+    document.getElementById('token3').value = token;
+    out.textContent = 'login ok. uid: ' + cred.user.uid + '\ntoken preenchido nos campos 1 e 3.';
+  } catch (e) {
+    out.textContent = 'ERRO: ' + e.message;
+  }
+}
+
 async function testar(rota, tokenId, bodyId, outId) {
   const out = document.getElementById(outId);
   out.textContent = 'enviando...';
@@ -68,7 +112,7 @@ async function testar(rota, tokenId, bodyId, outId) {
   let body;
   try {
     body = document.getElementById(bodyId).value;
-    JSON.parse(body); // valida antes de enviar
+    JSON.parse(body);
   } catch (e) {
     out.textContent = 'ERRO: o JSON digitado está inválido.\n' + e.message;
     return;

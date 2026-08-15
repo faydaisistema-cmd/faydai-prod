@@ -1,4 +1,4 @@
-const admin = require('../lib/firebaseAdmin');
+const admin = require('../../lib/firebaseAdmin');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'método não permitido' });

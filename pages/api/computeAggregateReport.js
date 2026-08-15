@@ -1,7 +1,7 @@
-const admin = require('../lib/firebaseAdmin');
-const { requireRole } = require('../lib/auth');
-const { getUnitChain } = require('../lib/hierarchy');
-const { COPSOQ_DIMENSIONS } = require('../lib/copsoqDimensions');
+const admin = require('../../lib/firebaseAdmin');
+const { requireRole } = require('../../lib/auth');
+const { getUnitChain } = require('../../lib/hierarchy');
+const { COPSOQ_DIMENSIONS } = require('../../lib/copsoqDimensions');
 
 function dimensionPassesDiversity(values) {
   return new Set(values).size >= 2;

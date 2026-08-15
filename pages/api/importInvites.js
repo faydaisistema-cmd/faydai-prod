@@ -1,7 +1,7 @@
-const admin = require('../lib/firebaseAdmin');
+const admin = require('../../lib/firebaseAdmin');
 const crypto = require('crypto');
-const { requireRole } = require('../lib/auth');
-const { computeBlindIndex } = require('../lib/blindIndex');
+const { requireRole } = require('../../lib/auth');
+const { computeBlindIndex } = require('../../lib/blindIndex');
 
 function generateInviteCode() {
   return crypto.randomBytes(6).toString('hex');
@@ -38,4 +38,3 @@ module.exports = async (req, res) => {
     res.status(err.status || 500).json({ error: err.message });
   }
 };
-.
